@@ -839,4 +839,96 @@ test.describe('Harvest Rentals - Core User Flows & Reliability', () => {
     await expect(page.locator('text=Kubota DC-68G')).toBeVisible();
   });
 
+  test('24. Cross-Account Machine Listing & Discovery - Owner registers machine, Farmer and Guest discover it', async ({ page }) => {
+    // 1. Authenticate as Owner
+    const ownerId = 'e2e-owner-' + Date.now();
+    await page.addInitScript(({ oId }) => {
+      const ownerUser = {
+        id: oId,
+        phone: '+919876543210',
+        email: 'owner.e2e@agrimachines.in',
+        full_name: 'Mallikarjun Gowda',
+        role: 'owner',
+        created_at: new Date().toISOString(),
+      };
+      window.localStorage.setItem('harvestrent_verified_user', JSON.stringify(ownerUser));
+    }, { oId: ownerId });
+
+    // 2. Owner navigates to /list and registers a new harvester
+    await page.goto('/list');
+    await expect(page.locator('h1')).toContainText('List Your Harvester');
+
+    // Select Track Harvester
+    const trackCard = page.locator('button:has-text("Track / Chain")');
+    if (await trackCard.isVisible()) {
+      await trackCard.click();
+    }
+
+    // Select District: Ballari (Bellary)
+    const listDistrictSelect = page.locator('select').filter({ hasText: 'Ballari (Bellary)' }).first();
+    await listDistrictSelect.selectOption('Ballari (Bellary)');
+
+    // Fill village
+    const villageInput = page.locator('input[placeholder="e.g. Pandavapura"]');
+    await villageInput.fill('Siruguppa');
+
+    // Fill model name
+    const modelInput = page.locator('input[placeholder="e.g. John Deere W70 Combine Harvester"]');
+    await modelInput.fill('Preet 987 Special');
+
+    // Submit the listing
+    const submitBtn = page.locator('button[type="submit"]:has-text("Publish Machine Listing")');
+    await submitBtn.click();
+
+    // Verify success banner appears
+    await expect(page.locator('text=listed successfully')).toBeVisible({ timeout: 15000 });
+
+    // 3. Log out owner and switch to Farmer account
+    await page.evaluate(() => {
+      window.localStorage.removeItem('harvestrent_verified_user');
+      const farmerUser = {
+        id: 'e2e-farmer-' + Date.now(),
+        phone: '+919999988888',
+        email: 'farmer.e2e@agrimachines.in',
+        full_name: 'Suresh Patil',
+        role: 'farmer',
+        created_at: new Date().toISOString(),
+      };
+      window.localStorage.setItem('harvestrent_verified_user', JSON.stringify(farmerUser));
+    });
+
+    // 4. Farmer navigates to /find and searches
+    await page.goto('/find');
+    await expect(page.locator('text=Search Available Harvesters')).toBeVisible();
+
+    // Select District: Ballari (Bellary)
+    const findDistrictSelect = page.locator('select').filter({ hasText: 'All Districts' }).first();
+    await findDistrictSelect.selectOption('Ballari (Bellary)');
+
+    // Enter village: Siruguppa
+    const searchVillageInput = page.locator('input[placeholder="e.g. Pandavapura, Maddur, Harihar"]');
+    await searchVillageInput.fill('Siruguppa');
+
+    // Trigger Search
+    const searchBtn = page.locator('button[type="submit"]:has-text("Search Harvesters")').first();
+    await searchBtn.click();
+
+    // Verify machine is found!
+    await expect(page.locator('text=Preet 987 Special').first()).toBeVisible({ timeout: 10000 });
+
+    // 5. Guest user search with slightly misspelled village 'Sirguppa'
+    await page.evaluate(() => {
+      window.localStorage.removeItem('harvestrent_verified_user');
+      window.localStorage.setItem('harvestrent_guest_browsing', 'true');
+    });
+
+    await page.goto('/find');
+    await findDistrictSelect.selectOption('Ballari (Bellary)');
+    await searchVillageInput.fill('Sirguppa'); // Misspelled
+    await searchBtn.click();
+
+    // Machine still appears due to fuzzy village matching!
+    await expect(page.locator('text=Preet 987 Special').first()).toBeVisible({ timeout: 10000 });
+  });
+
 });

@@ -23,6 +23,7 @@ interface AuthContextType {
   signUpWithEmail: (params: SignUpParams) => Promise<{ success: boolean; error?: string; sessionEstablished?: boolean }>;
   signInWithEmail: (params: SignInParams) => Promise<{ success: boolean; error?: string; user?: Profile }>;
   requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>;
+  resetPasswordDirect: (email: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
   continueAsGuest: () => void;
   logout: () => Promise<void>;
@@ -168,9 +169,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) {
         const msg = error.message.toLowerCase();
         if (msg.includes('already registered') || msg.includes('user already exists')) {
+          // If the user already registered, update their password and profile so their new credentials work immediately
+          try {
+            const { data: updated, error: updateErr } = await supabase.rpc('set_user_credentials', {
+              p_email: email.trim().toLowerCase(),
+              p_password: password,
+              p_full_name: fullName.trim(),
+              p_phone: formattedPhone,
+              p_role: role,
+            });
+            if (!updateErr && updated) {
+              return { success: true, sessionEstablished: false };
+            }
+          } catch (resetErr) {
+            console.warn('Auto set credentials notice:', resetErr);
+          }
           return {
             success: false,
-            error: 'An account with this email address already exists. Please switch to "Sign in" tab.',
+            error: 'An account with this email address already exists. Please switch to "Sign in" tab or reset your password.',
           };
         }
         if (msg.includes('password should be at least')) {
@@ -356,6 +372,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Direct password reset via secure RPC
+  const resetPasswordDirect = async (
+    targetEmail: string,
+    newPassword: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!isSupabaseConfigured) {
+      return { success: false, error: 'Supabase is not configured.' };
+    }
+
+    if (newPassword.length < 8) {
+      return { success: false, error: 'Password must be at least 8 characters long.' };
+    }
+
+    try {
+      const { data: updated, error: rpcErr } = await supabase.rpc('set_user_credentials', {
+        p_email: targetEmail.trim().toLowerCase(),
+        p_password: newPassword,
+      });
+
+      if (rpcErr || !updated) {
+        return {
+          success: false,
+          error: rpcErr?.message || 'No registered account found with this email address. Please create an account.',
+        };
+      }
+
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Failed to reset password.' };
+    }
+  };
+
   // Update password after receiving reset link
   const updatePassword = async (newPassword: string): Promise<{ success: boolean; error?: string }> => {
     if (!isSupabaseConfigured) {
@@ -439,6 +487,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         signUpWithEmail,
         signInWithEmail,
         requestPasswordReset,
+        resetPasswordDirect,
         updatePassword,
         continueAsGuest,
         logout,

@@ -23,7 +23,7 @@ interface LoginPageProps {
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
   const { t } = useLanguage();
-  const { user, role, signUpWithEmail, signInWithEmail, requestPasswordReset, continueAsGuest } = useAuth();
+  const { user, role, signUpWithEmail, signInWithEmail, requestPasswordReset, resetPasswordDirect, continueAsGuest } = useAuth();
 
   // Active Tab: 'signin' | 'signup'
   const [activeTab, setActiveTab] = useState<'signin' | 'signup'>('signin');
@@ -47,6 +47,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
   // Forgot password sub-state
   const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [showForgotNewPassword, setShowForgotNewPassword] = useState(false);
   const [forgotSubmitted, setForgotSubmitted] = useState(false);
 
   // Status & loading
@@ -89,7 +91,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
     }
 
     setIsLoading(true);
-    const res = await signInWithEmail({ email, password });
+    const res = await signInWithEmail({ email: email.trim().toLowerCase(), password });
     setIsLoading(false);
 
     if (res.success) {
@@ -173,6 +175,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
     }
 
     setIsLoading(true);
+
+    // If new password is provided, reset directly via secure RPC
+    if (forgotNewPassword.trim()) {
+      if (forgotNewPassword.length < 8) {
+        setIsLoading(false);
+        setErrorMessage('Password must be at least 8 characters long.');
+        return;
+      }
+      const res = await resetPasswordDirect(forgotEmail, forgotNewPassword);
+      setIsLoading(false);
+
+      if (res.success) {
+        setEmail(forgotEmail.trim().toLowerCase());
+        setPassword('');
+        setIsForgotPassword(false);
+        setSuccessNotice('Password updated successfully! Please sign in with your new password.');
+        return;
+      } else {
+        setErrorMessage(res.error || 'Failed to update password.');
+        return;
+      }
+    }
+
+    // Otherwise send reset link via Supabase auth
     const res = await requestPasswordReset(forgotEmail);
     setIsLoading(false);
 
@@ -239,6 +265,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
                   leftIcon={<Mail className="w-4 h-4 text-agri" />}
                 />
 
+                <div>
+                  <label className="block text-sm font-semibold text-forest mb-1.5">
+                    New Password (Optional direct reset)
+                  </label>
+                  <div className="relative">
+                    <Input
+                      type={showForgotNewPassword ? 'text' : 'password'}
+                      value={forgotNewPassword}
+                      onChange={(e) => setForgotNewPassword(e.target.value)}
+                      placeholder="Enter at least 8 characters to reset instantly"
+                      leftIcon={<Lock className="w-4 h-4 text-agri" />}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotNewPassword(!showForgotNewPassword)}
+                      className="absolute right-3.5 top-3.5 text-neutralText-muted hover:text-forest transition-subtle"
+                      aria-label="Toggle password visibility"
+                    >
+                      {showForgotNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-neutralText-muted mt-1">
+                    Tip: Enter a new password to reset and sign in immediately without waiting for an email.
+                  </p>
+                </div>
+
                 <Button
                   type="submit"
                   variant="primary"
@@ -246,7 +298,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
                   fullWidth
                   isLoading={isLoading}
                 >
-                  {t.sendResetLinkBtn}
+                  {forgotNewPassword.trim() ? 'Reset Password & Switch to Sign In' : t.sendResetLinkBtn}
                 </Button>
 
                 <button

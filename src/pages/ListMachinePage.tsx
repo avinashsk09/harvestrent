@@ -310,7 +310,14 @@ export const ListMachinePage: React.FC<ListMachinePageProps> = ({ onNavigate }) 
             .select('id')
             .maybeSingle();
 
-          if (!sbError && insertedData?.id) {
+          if (sbError) {
+            console.error('Supabase machine insert failed:', sbError);
+            setLoading(false);
+            setError(`Failed to register vehicle in database: ${sbError.message}`);
+            return;
+          }
+
+          if (insertedData?.id) {
             newMachine.id = insertedData.id;
 
             // Also insert into machine_photos table
@@ -322,11 +329,12 @@ export const ListMachinePage: React.FC<ListMachinePageProps> = ({ onNavigate }) 
               }));
               await supabase.from('machine_photos').insert(photoRows);
             }
-          } else if (sbError) {
-            console.warn('Supabase machine insert notice:', sbError);
           }
-        } catch (dbErr) {
-          console.warn('Supabase machine insert exception:', dbErr);
+        } catch (dbErr: any) {
+          console.error('Supabase machine insert exception:', dbErr);
+          setLoading(false);
+          setError(`Database connection error: ${dbErr?.message || 'Failed to save machine.'}`);
+          return;
         }
       }
 

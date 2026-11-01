@@ -200,10 +200,12 @@ export const FindMachinePage: React.FC<FindMachinePageProps> = ({
       if (currentSeq === searchSeqRef.current) {
         setMachines(results);
       }
-    } catch (err) {
+    } catch (err: any) {
       if (currentSeq === searchSeqRef.current) {
         console.error('Search failed:', err);
         setMachines([]);
+        const errMsg = err?.message || 'Failed to search harvesters. Please check your network connection.';
+        setPageToast({ type: 'error', message: errMsg });
       }
     } finally {
       if (currentSeq === searchSeqRef.current) {

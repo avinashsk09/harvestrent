@@ -212,9 +212,13 @@ export async function searchHarvesterMachines(filters: SearchFilters): Promise<M
         });
         const combined = local.length > 0 ? [...(data as Machine[]), ...local] : (data as Machine[]);
         return sortMachines(combined, sortBy);
+      } else if (error) {
+        console.error('Supabase RPC search_machines error:', error);
+        throw error;
       }
     } catch (err) {
       console.warn('Supabase RPC call fallback to local:', err);
+      throw err;
     }
   }
 
